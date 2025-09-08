@@ -177,7 +177,7 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 					allowCountries.allowedIPRanges[index] = CreateCountryIPBlocks(allowCountries.allowedIPRanges[index].Country, allowCountries.cidrFileFolder, allowCountries.fileExtension)
 				}
 
-				log.Println("Looking up IP Address Range: ", allowedCountries.allowedIPRanges[index].IpRanges)
+				log.Println("Looking up IP Address Range: ", allowCountries.allowedIPRanges[index].IpRanges)
 				found = IsIpInList(*ipAddress, allowCountries.allowedIPRanges[index].IpRanges)
 				// If IP was found we can break the current cycle.
 				if found {
