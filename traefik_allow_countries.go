@@ -142,6 +142,7 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 		}
 	}
 
+		log.Printf("Request IP Addresses: %v", requestIPAddressList)
 	// Iterate over the addresses.
 	for _, ipAddress := range requestIPAddressList {
 		// Check whether the current IP address is a private one.
@@ -165,6 +166,8 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 			return
 		}
 
+
+		log.Printf("Looking Up External IP Address: %v", *ipAddress)
 		// Check country ip ranges.
 		var found bool = false
 		for index := range allowCountries.allowedIPRanges {
@@ -174,9 +177,11 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 					allowCountries.allowedIPRanges[index] = CreateCountryIPBlocks(allowCountries.allowedIPRanges[index].Country, allowCountries.cidrFileFolder, allowCountries.fileExtension)
 				}
 
+				log.Println("Looking up IP Address Range: ", allowedCountries.allowedIPRanges[index].IpRanges)
 				found = IsIpInList(*ipAddress, allowCountries.allowedIPRanges[index].IpRanges)
 				// If IP was found we can break the current cycle.
 				if found {
+					log.Println("!! Found Valid IP !!")
 					if allowCountries.logAllowedRequests {
 						log.Printf("%s: Request (%s %s) allowed for IP [%s]", allowCountries.name, request.Host, request.URL, ipAddress)
 					}
