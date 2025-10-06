@@ -42,6 +42,7 @@ type traefik_allow_countries struct {
 	logDetails         bool
 	logLocalRequests   bool
 	silentStartUp      bool
+	trustedProxies     []*net.IPNet
 }
 
 type Config struct {
@@ -55,6 +56,7 @@ type Config struct {
 	LogDetails         bool     `yaml:"logDetails"`
 	LogLocalRequests   bool     `yaml:"logLocalRequests"`
 	SilentStartUp      bool     `yaml:"silentStartUp"`
+	TrustedProxies     []string `yaml:"trustedProxies"`
 }
 
 type IpRangesTimestamp struct {
@@ -105,6 +107,15 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		log.Println("Log local requests: ", config.LogLocalRequests)
 	}
 
+	trustedProxyIPs := make([]*net.IPNet, len(config.TrustedProxies))
+	for i, proxy := range config.TrustedProxies {
+		_, ipBlock, err := net.ParseCIDR(proxy)
+		if err != nil {
+			return nil, err
+		}
+		trustedProxyIPs[i] = ipBlock
+	}
+
 	return &traefik_allow_countries{
 		next:               next,
 		name:               name,
@@ -119,6 +130,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		logDetails:         config.LogDetails,
 		logLocalRequests:   config.LogLocalRequests,
 		silentStartUp:      config.SilentStartUp,
+		trustedProxies:     trustedProxyIPs,
 	}, nil
 }
 
@@ -152,7 +164,9 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 				if allowCountries.logLocalRequests {
 					log.Println("Local IP allowed: ", ipAddress, request.URL)
 				}
-				allowCountries.next.ServeHTTP(responseWriter, request)
+				// Continue down the chain if there is a local ip
+				// allowCountries.next.ServeHTTP(responseWriter, request)
+				continue
 			} else {
 				// If local requests are prohibited write StatusForbidden.
 				if allowCountries.logLocalRequests {
@@ -165,8 +179,17 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 			return
 		}
 
+		// Check if IP is in trusted proxies list
+		found := IsIpInList(*ipAddress, allowCountries.trustedProxies)
+		if found {
+			// Continue down the chain of proxies if we trust this one
+			if allowCountries.logAllowedRequests {
+				log.Printf("%s: Trusted Proxy (%s %s) allowed for IP [%s]", allowCountries.name, request.Host, request.URL, ipAddress)
+			}
+			continue
+		}
+
 		// Check country ip ranges.
-		var found bool = false
 		for index := range allowCountries.allowedIPRanges {
 			if allowCountries.allowedIPRanges[index].Country != PrivateIpAddressesTag {
 				// Check whether an update is needed.
@@ -190,6 +213,7 @@ func (allowCountries *traefik_allow_countries) ServeHTTP(responseWriter http.Res
 			}
 		}
 
+		// Flat out deny if we don't have a match
 		if !found {
 			log.Printf("%s: Request (%s %s) denied for IP [%s]", allowCountries.name, request.Host, request.URL, ipAddress)
 			responseWriter.WriteHeader(http.StatusForbidden)
